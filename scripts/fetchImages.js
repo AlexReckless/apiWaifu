@@ -1,7 +1,12 @@
-// Este script NO descarga ni almacena imagenes.
-// Solo consulta la API publica de Wikipedia para obtener la URL de la miniatura oficial
-// de cada personaje y guarda ese ENLACE en el campo "imagenUrl" de tu base de datos.
-// Es el mismo mecanismo de "hotlink" que usan muchas apps (apuntar a la imagen, no copiarla).
+// Este script consulta la API publica de Wikipedia para encontrar la miniatura
+// oficial de cada personaje, DESCARGA esos bytes del lado del servidor y los
+// guarda en base64 en el campo "imagenUrl" (mismo formato que usan los
+// personajes que suben los usuarios desde la app). No se hace hotlink en
+// tiempo de ejecucion: Wikimedia devuelve 403 a las peticiones de imagen que
+// hace React Native/Android desde el celular (su politica de User-Agent no
+// se respeta de forma confiable en el prop "headers" de <Image> en Android),
+// asi que la unica forma robusta es traer la imagen una sola vez aqui y
+// guardarla ya lista para servir sin depender de Wikipedia en cada carga.
 //
 // Requiere Node 18+ (usa fetch nativo). Ejecutar DESPUES de "npm run seed".
 //
@@ -67,14 +72,28 @@ async function buscarTitulo(nombre, origen) {
   return buscarTextoCompleto(nombre);
 }
 
-// Obtiene la miniatura (thumbnail) de la pagina encontrada
-async function obtenerImagen(titulo) {
+// Tope de seguridad: no vale la pena guardar miniaturas gigantes en Mongo.
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024; // 3MB
+
+// Encuentra la URL de la miniatura de la pagina y descarga los bytes,
+// devolviendo un data URI base64 listo para guardar (o null si no se pudo).
+async function obtenerImagenBase64(titulo) {
   const url = WIKI_SUMMARY + encodeURIComponent(titulo);
   const res = await fetchWiki(url);
   if (!res || !res.ok) return null;
 
   const data = await res.json();
-  return data.thumbnail?.source || data.originalimage?.source || null;
+  const imageUrl = data.thumbnail?.source || data.originalimage?.source || null;
+  if (!imageUrl) return null;
+
+  const imgRes = await fetchWiki(imageUrl);
+  if (!imgRes || !imgRes.ok) return null;
+
+  const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+  const buffer = Buffer.from(await imgRes.arrayBuffer());
+  if (buffer.length === 0 || buffer.length > MAX_IMAGE_BYTES) return null;
+
+  return `data:${contentType};base64,${buffer.toString('base64')}`;
 }
 
 async function run() {
@@ -109,15 +128,15 @@ async function run() {
         continue;
       }
 
-      const imagenUrl = await obtenerImagen(titulo);
-      if (imagenUrl) {
-        p.imagenUrl = imagenUrl;
+      const imagenBase64 = await obtenerImagenBase64(titulo);
+      if (imagenBase64) {
+        p.imagenUrl = imagenBase64;
         await p.save();
         actualizados++;
-        console.log(`OK  -> ${p.nombre}: ${imagenUrl}`);
+        console.log(`OK  -> ${p.nombre}: imagen guardada (${(imagenBase64.length / 1024).toFixed(0)} KB base64)`);
       } else {
         sinImagen.push(p.nombre);
-        console.log(`SIN IMAGEN -> ${p.nombre} (pagina "${titulo}" sin miniatura)`);
+        console.log(`SIN IMAGEN -> ${p.nombre} (pagina "${titulo}" sin miniatura descargable)`);
       }
     } catch (err) {
       console.log(`ERROR -> ${p.nombre}: ${err.message}`);
