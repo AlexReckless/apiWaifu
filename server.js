@@ -7,7 +7,10 @@ const connectDB = require('./config/db');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+// Limite default de express.json() es 100kb, muy poco para una imagen en
+// base64 (los personajes que no son OR guardan su imagen asi, sin depender
+// de ningun enlace externo). 10mb da margen de sobra para una sola imagen.
+app.use(express.json({ limit: '10mb' }));
 
 app.get('/', (req, res) => {
   res.json({

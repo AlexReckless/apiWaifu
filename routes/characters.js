@@ -33,6 +33,7 @@ router.get('/', async (req, res) => {
     const filter = {};
     if (req.query.tipo) filter.tipo = req.query.tipo;
     if (req.query.origen) filter.origen = new RegExp(req.query.origen, 'i');
+    if (req.query.nombre) filter.nombre = new RegExp(req.query.nombre, 'i');
 
     const total = await Character.countDocuments(filter);
     const characters = await Character.find(filter)
