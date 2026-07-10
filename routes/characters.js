@@ -68,4 +68,22 @@ router.post('/', async (req, res) => {
   }
 });
 
+// PATCH /api/characters/:id  (editar imagen/info de un personaje ya existente,
+// usado por el panel de admin -- misma X-API-Key que el resto de estas rutas)
+router.patch('/:id', async (req, res) => {
+  try {
+    const permitidos = ['nombre', 'edad', 'signo', 'fechaNacimiento', 'origen', 'tipo', 'sinopsis', 'popularidad', 'imagenUrl', 'rarity'];
+    const updates = {};
+    for (const key of permitidos) {
+      if (key in req.body) updates[key] = req.body[key];
+    }
+
+    const actualizado = await Character.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
+    if (!actualizado) return res.status(404).json({ error: 'Personaje no encontrado' });
+    res.json(actualizado);
+  } catch (err) {
+    res.status(400).json({ error: 'Error al actualizar personaje', detail: err.message });
+  }
+});
+
 module.exports = router;
