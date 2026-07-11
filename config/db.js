@@ -15,6 +15,12 @@ async function connectDB(uri) {
     family: 4,
     retryWrites: true,
     retryReads: true,
+    // Sin esto, Mongoose usa el default de 100 -- parejo con el limite de
+    // anistream-backend (10) para no dejar que un solo servicio acapare el
+    // cluster compartido (M0 free tier: recursos chicos, compartidos entre
+    // los tres backends y ademas Atlas Data Explorer).
+    maxPoolSize: 10,
+    minPoolSize: 2,
   });
 }
 
